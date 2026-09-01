@@ -1,5 +1,9 @@
+const EventBus = require("./EventBus");
+
 class Environment {
-    constructor() {
+    constructor(eventBus) {
+        this.eventBus = eventBus;
+
         this.state = {
             temperature: 28,
             occupancy: 2,
@@ -18,14 +22,24 @@ class Environment {
 
     updateState(variable, value) {
         if (!(variable in this.state)) {
-            throw new Error(`Unknown environment variable: ${variable}`);
+            throw new Error(
+                `Unknown environment variable: ${variable}`
+            );
         }
+
+        const oldValue = this.state[variable];
 
         this.state[variable] = value;
 
         console.log(
-            `Environment changed → ${variable} = ${value}`
+            `Environment changed → ${variable}: ${oldValue} → ${value}`
         );
+
+        this.eventBus.emit("stateChanged", {
+            variable,
+            oldValue,
+            newValue: value
+        });
     }
 }
 
