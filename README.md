@@ -1,4 +1,4 @@
-# SmartDorm — Multi-Resident Rule Engine
+## SmartDorm — Multi-Resident Rule Engine
 
 A fairness-aware and explainable IoT rule engine designed for shared smart spaces.
 
