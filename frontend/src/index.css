@@ -1,0 +1,17 @@
+@import "@xyflow/react/dist/style.css";
+
+html,
+body,
+#root {
+  width: 100%;
+  min-height: 100%;
+}
+
+html {
+  background: #07111f;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+}
