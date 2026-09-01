@@ -1,12 +1,15 @@
 const RuleEvaluator = require("./rules/RuleEvaluator");
 const DependencyGraph = require("./graph/DependencyGraph");
+const ConflictResolver = require("./arbitration/ConflictResolver");
 
 class RuleEngine {
     constructor(rules, environment) {
         this.rules = rules;
         this.environment = environment;
+
         this.evaluator = new RuleEvaluator();
         this.graph = new DependencyGraph();
+        this.conflictResolver = new ConflictResolver();
 
         this.graph.buildFromRules(this.rules);
     }
@@ -19,6 +22,9 @@ class RuleEngine {
         while (changed) {
             changed = false;
 
+            const triggeredRules = [];
+
+            // Find all rules whose conditions are currently true
             for (const ruleId of executionOrder) {
                 const rule = this.rules.find(
                     rule => rule.id === ruleId
@@ -32,20 +38,83 @@ class RuleEngine {
                     this.evaluator.evaluateRule(rule, state);
 
                 if (conditionMet) {
-                    const oldValue =
-                        state[rule.action.device];
+                    triggeredRules.push(rule);
+                }
+            }
 
-                    this.evaluator.executeRule(
-                        rule,
-                        state
+            // Detect conflicts between triggered rules
+            const conflicts =
+                this.conflictResolver.findConflicts(
+                    triggeredRules
+                );
+
+            // Resolve each conflict exactly once
+            const conflictResults = [];
+
+            for (const conflict of conflicts) {
+                const result =
+                    this.conflictResolver.resolveConflict(
+                        conflict
                     );
 
-                    const newValue =
-                        state[rule.action.device];
+                conflictResults.push({
+                    conflict,
+                    result
+                });
 
-                    if (oldValue !== newValue) {
-                        changed = true;
-                    }
+                console.log(
+                    `\nCONFLICT on ${conflict.device}`
+                );
+
+                console.log(
+                    `Winner: ${result.winner.id}`
+                );
+
+                console.log(
+                    "Effective priorities:",
+                    result.priorities
+                );
+            }
+
+            // Store the winning rules
+            const winners = new Set();
+
+            for (const item of conflictResults) {
+                winners.add(item.result.winner.id);
+            }
+
+            // Execute rules
+            for (const rule of triggeredRules) {
+
+                const isConflicting =
+                    conflicts.some(conflict =>
+                        conflict.rules.some(
+                            conflictingRule =>
+                                conflictingRule.id === rule.id
+                        )
+                    );
+
+                const isWinner =
+                    winners.has(rule.id);
+
+                // Skip a conflicting rule if it lost
+                if (isConflicting && !isWinner) {
+                    continue;
+                }
+
+                const oldValue =
+                    state[rule.action.device];
+
+                this.evaluator.executeRule(
+                    rule,
+                    state
+                );
+
+                const newValue =
+                    state[rule.action.device];
+
+                if (oldValue !== newValue) {
+                    changed = true;
                 }
             }
         }
@@ -58,11 +127,10 @@ class RuleEngine {
             `\nProcessing event: ${event.variable} = ${event.newValue}`
         );
 
-        const state = this.environment.getState();
+        const state =
+            this.environment.getState();
 
-        const updatedState = this.run(state);
-
-        return updatedState;
+        return this.run(state);
     }
 }
 
