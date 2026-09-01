@@ -21,14 +21,20 @@ class RuleEvaluator {
     }
 
     evaluateRule(rule, state) {
-        return this.evaluateCondition(rule.condition, state);
+        return this.evaluateCondition(
+            rule.condition,
+            state
+        );
     }
 
     executeRule(rule, state) {
-        state[rule.action.device] = rule.action.value;
+        const device = rule.action.device;
+        const value = rule.action.value;
+
+        state[device] = value;
 
         console.log(
-            `${rule.id} triggered → ${rule.action.device} = ${rule.action.value}`
+            `${rule.id} triggered → ${device} = ${value}`
         );
     }
 }

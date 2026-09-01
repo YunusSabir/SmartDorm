@@ -105,19 +105,26 @@ class RuleEngine {
                 }
 
                 const oldValue =
-                    state[rule.action.device];
+    state[rule.action.device];
 
-                this.evaluator.executeRule(
-                    rule,
-                    state
-                );
+this.evaluator.executeRule(
+    rule,
+    state
+);
 
-                const newValue =
-                    state[rule.action.device];
+const newValue =
+    state[rule.action.device];
 
-                if (oldValue !== newValue) {
-                    changed = true;
-                }
+if (oldValue !== newValue) {
+    this.environment.setDeviceState(
+        rule.action.device,
+        newValue
+    );
+
+    changed = true;
+}
+
+                
             }
         }
 

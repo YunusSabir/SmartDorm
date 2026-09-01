@@ -19,7 +19,31 @@ class Environment {
     getState() {
         return { ...this.state };
     }
+setDeviceState(device, value) {
+    if (!(device in this.state)) {
+        throw new Error(
+            `Unknown device: ${device}`
+        );
+    }
 
+    const oldValue = this.state[device];
+
+    if (oldValue === value) {
+        return;
+    }
+
+    this.state[device] = value;
+
+    console.log(
+        `Device changed → ${device}: ${oldValue} → ${value}`
+    );
+
+    this.eventBus.emit("deviceChanged", {
+        device,
+        oldValue,
+        newValue: value
+    });
+}
     updateState(variable, value) {
         if (!(variable in this.state)) {
             throw new Error(
