@@ -53,3 +53,8 @@ const graph = new DependencyGraph();
 graph.buildFromRules(rules);
 
 graph.display();
+
+const executionOrder = graph.getExecutionOrder();
+
+console.log("Execution order:");
+console.log(executionOrder);

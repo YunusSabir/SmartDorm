@@ -17,12 +17,10 @@ class DependencyGraph {
     }
 
     buildFromRules(rules) {
-        // Add every rule as a node
         for (const rule of rules) {
             this.addRule(rule.id);
         }
 
-        // Find dependencies automatically
         for (const ruleA of rules) {
             for (const ruleB of rules) {
 
@@ -30,14 +28,61 @@ class DependencyGraph {
                     continue;
                 }
 
-                // Rule A writes a state that Rule B reads
-                if (
-                    ruleA.action.device === ruleB.condition.variable
-                ) {
+                if (ruleA.action.device === ruleB.condition.variable) {
                     this.addDependency(ruleA.id, ruleB.id);
                 }
             }
         }
+    }
+
+    getExecutionOrder() {
+        const inDegree = new Map();
+
+        for (const rule of this.graph.keys()) {
+            inDegree.set(rule, 0);
+        }
+
+        for (const dependencies of this.graph.values()) {
+            for (const dependentRule of dependencies) {
+                inDegree.set(
+                    dependentRule,
+                    inDegree.get(dependentRule) + 1
+                );
+            }
+        }
+
+        const queue = [];
+
+        for (const [rule, degree] of inDegree) {
+            if (degree === 0) {
+                queue.push(rule);
+            }
+        }
+
+        const order = [];
+
+        while (queue.length > 0) {
+            const currentRule = queue.shift();
+
+            order.push(currentRule);
+
+            for (const nextRule of this.graph.get(currentRule)) {
+                inDegree.set(
+                    nextRule,
+                    inDegree.get(nextRule) - 1
+                );
+
+                if (inDegree.get(nextRule) === 0) {
+                    queue.push(nextRule);
+                }
+            }
+        }
+
+        if (order.length !== this.graph.size) {
+            throw new Error("Circular dependency detected");
+        }
+
+        return order;
     }
 
     display() {
