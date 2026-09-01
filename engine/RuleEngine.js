@@ -2,17 +2,16 @@ const RuleEvaluator = require("./rules/RuleEvaluator");
 const DependencyGraph = require("./graph/DependencyGraph");
 
 class RuleEngine {
-    constructor(rules) {
+    constructor(rules, environment) {
         this.rules = rules;
+        this.environment = environment;
         this.evaluator = new RuleEvaluator();
         this.graph = new DependencyGraph();
 
-        // Build dependency graph from the rules
         this.graph.buildFromRules(this.rules);
     }
 
     run(state) {
-        // Get the correct dependency-based execution order
         const executionOrder = this.graph.getExecutionOrder();
 
         let changed = true;
@@ -21,7 +20,6 @@ class RuleEngine {
             changed = false;
 
             for (const ruleId of executionOrder) {
-                // Find the actual rule using its ID
                 const rule = this.rules.find(
                     rule => rule.id === ruleId
                 );
@@ -53,6 +51,18 @@ class RuleEngine {
         }
 
         return state;
+    }
+
+    handleEvent(event) {
+        console.log(
+            `\nProcessing event: ${event.variable} = ${event.newValue}`
+        );
+
+        const state = this.environment.getState();
+
+        const updatedState = this.run(state);
+
+        return updatedState;
     }
 }
 
