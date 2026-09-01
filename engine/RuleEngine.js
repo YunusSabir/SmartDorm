@@ -74,6 +74,8 @@ class RuleEngine {
                     "Effective priorities:",
                     result.priorities
                 );
+                console.log("Why this rule won:");
+                console.log(result.explanation);
             }
 
             // Store the winning rules
