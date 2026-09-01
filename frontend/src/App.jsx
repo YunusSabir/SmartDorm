@@ -1,5 +1,9 @@
+import {
+  connectWebSocket,
+  sendSensorUpdate
+} from "./services/websocket";
 import "./App.css";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Background,
   Controls,
@@ -473,6 +477,20 @@ function DeviceCard({
 }
 
 export default function App() {
+  useEffect(() => {
+    connectWebSocket((message) => {
+        console.log("Received from backend:", message);
+
+        if (message.type === "state") {
+            console.log("Backend state:", message.data);
+        }
+
+        if (message.type === "conflict") {
+            console.log("Conflict:", message);
+        }
+    });
+}, []);
+
   const [environment, setEnvironment] =
     useState(initialEnvironment);
 
@@ -496,6 +514,116 @@ export default function App() {
 
   const [lastExecution, setLastExecution] =
     useState(null);
+
+  const [wsStatus, setWsStatus] =
+    useState("CONNECTING");
+
+  useEffect(() => {
+    const socket = new WebSocket("ws://localhost:8080");
+
+    socket.onopen = () => {
+      setWsStatus("CONNECTED");
+      addLog("SYSTEM", "WebSocket connected to ws://localhost:8080.");
+    };
+
+    socket.onmessage = (event) => {
+      try {
+        const message = JSON.parse(event.data);
+
+        if (message.type === "state") {
+          const state = message.state || message.environment || message.data || message;
+
+          setEnvironment((previous) => ({
+            ...previous,
+            ...(state.time !== undefined ? { time: state.time } : {}),
+            ...(state.occupancy !== undefined ? { occupancy: Number(state.occupancy) } : {}),
+            ...(state.temperature !== undefined ? { temperature: Number(state.temperature) } : {}),
+            ...(state.window !== undefined ? { window: String(state.window).toUpperCase() } : {}),
+            ...(state.lights !== undefined ? { lights: String(state.lights).toUpperCase() } : {}),
+            ...(state.light !== undefined ? { lights: String(state.light).toUpperCase() } : {}),
+            ...(state.ac !== undefined ? { ac: String(state.ac).toUpperCase() } : {}),
+            ...(state.fan !== undefined ? { fan: String(state.fan).toUpperCase() } : {}),
+            ...(state.home !== undefined ? { home: Boolean(state.home) } : {}),
+          }));
+
+          addLog("SYSTEM", "Dashboard updated from WebSocket state.");
+          return;
+        }
+
+        if (message.type === "sensorUpdate") {
+          const variable = normalizeDevice(String(message.variable || ""));
+          const value = message.value;
+
+          if (variable === "temperature") {
+            setEnvironment((previous) => ({
+              ...previous,
+              temperature: Number(value),
+            }));
+          } else if (variable === "occupancy") {
+            setEnvironment((previous) => ({
+              ...previous,
+              occupancy: Number(value),
+            }));
+          } else if (["window", "lights", "ac", "fan"].includes(variable)) {
+            setEnvironment((previous) => ({
+              ...previous,
+              [variable]: String(value).toUpperCase(),
+            }));
+          }
+
+          return;
+        }
+
+        if (message.environment) {
+          setEnvironment((previous) => ({
+            ...previous,
+            ...message.environment,
+          }));
+        }
+      } catch (error) {
+        addLog("ERROR", "Received an invalid WebSocket message.");
+      }
+    };
+
+    socket.onerror = () => {
+      setWsStatus("ERROR");
+      addLog("ERROR", "WebSocket connection error.");
+    };
+
+    socket.onclose = () => {
+      setWsStatus("DISCONNECTED");
+    };
+
+    return () => {
+      socket.close();
+    };
+  }, []);
+
+  function sendTemperatureTest() {
+    const socket = new WebSocket("ws://localhost:8080");
+
+    socket.onopen = () => {
+      socket.send(
+        JSON.stringify({
+          type: "sensorUpdate",
+          variable: "temperature",
+          value: 32,
+        })
+      );
+      addLog(
+        "SYSTEM",
+        'Sent {type: "sensorUpdate", variable: "temperature", value: 32} to backend.'
+      );
+      socket.close();
+    };
+
+    socket.onerror = () => {
+      addLog(
+        "ERROR",
+        "Could not send the temperature test message. Make sure the backend is running on port 8080."
+      );
+    };
+  }
 
   const edges = useMemo(
     () => buildDependencies(rules),
@@ -1100,6 +1228,10 @@ export default function App() {
           <div className="simulation-badge">
             SIMULATION MODE
           </div>
+
+          <div className={`simulation-badge ${wsStatus === "CONNECTED" ? "ws-connected" : "ws-disconnected"}`}>
+            WS: {wsStatus}
+          </div>
         </div>
       </header>
 
@@ -1357,6 +1489,16 @@ export default function App() {
                 }
               >
                 ▶ RUN RULE ENGINE
+              </button>
+
+              <button
+                type="button"
+                className="run-button"
+                onClick={
+                  sendTemperatureTest
+                }
+              >
+                📡 TEST WS: TEMPERATURE → 32°C
               </button>
 
               {lastExecution && (
