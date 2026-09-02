@@ -1,6 +1,7 @@
 const RuleEvaluator = require("./rules/RuleEvaluator");
 const DependencyGraph = require("./graph/DependencyGraph");
 const ConflictResolver = require("./arbitration/ConflictResolver");
+const CycleDetector = require("./cycle-detection/CycleDetector");
 
 class RuleEngine {
     constructor(rules, environment) {
@@ -8,14 +9,70 @@ class RuleEngine {
         this.environment = environment;
 
         this.evaluator = new RuleEvaluator();
-        this.graph = new DependencyGraph();
         this.conflictResolver = new ConflictResolver();
 
+        this.graph = new DependencyGraph();
         this.graph.buildFromRules(this.rules);
     }
 
+    // Add a rule while the system is running and rebuild the dependency
+    // graph immediately, so cycle detection and chaining reflect the
+    // new rule on the very next run().
+    addRule(rule) {
+        this.rules.push(rule);
+        this.rebuildGraph();
+    }
+
+    removeRule(ruleId) {
+        this.rules = this.rules.filter((rule) => rule.id !== ruleId);
+        this.rebuildGraph();
+    }
+
+    rebuildGraph() {
+        this.graph = new DependencyGraph();
+        this.graph.buildFromRules(this.rules);
+    }
+
+    getCycleInfo() {
+        const detector = new CycleDetector(this.graph);
+        const cyclePath = detector.findCyclePath();
+
+        return {
+            detected: cyclePath !== null,
+            path: cyclePath
+        };
+    }
+
+    // Runs the engine against a state snapshot. Returns a structured
+    // result (state + which rules fired + conflicts + a log feed) so
+    // a UI can render everything the engine decided without having to
+    // re-derive any of it itself.
     run(state) {
+        const logs = [];
+        const cycleInfo = this.getCycleInfo();
+
+        // A cyclic dependency graph would make topological execution order
+        // undefined and risks an infinite loop. Detect it up front and
+        // refuse to execute, instead of ever starting the loop.
+        if (cycleInfo.detected) {
+            logs.push({
+                type: "CYCLE",
+                message: `Execution blocked. Circular dependency detected: ${cycleInfo.path.join(" \u2192 ")}`
+            });
+
+            return {
+                state,
+                cycle: cycleInfo,
+                activeRuleIds: [],
+                conflicts: [],
+                logs
+            };
+        }
+
         const executionOrder = this.graph.getExecutionOrder();
+
+        const activeRuleIds = new Set();
+        const allConflicts = [];
 
         let changed = true;
 
@@ -62,20 +119,12 @@ class RuleEngine {
                     result
                 });
 
-                console.log(
-                    `\nCONFLICT on ${conflict.device}`
-                );
+                allConflicts.push(result.explanation);
 
-                console.log(
-                    `Winner: ${result.winner.id}`
-                );
-
-                console.log(
-                    "Effective priorities:",
-                    result.priorities
-                );
-                console.log("Why this rule won:");
-                console.log(result.explanation);
+                logs.push({
+                    type: "CONFLICT",
+                    message: `Contradiction on ${conflict.device}: ${result.winner.id} beats ${result.loser.id} (${result.explanation.reason}).`
+                });
             }
 
             // Store the winning rules
@@ -104,31 +153,56 @@ class RuleEngine {
                     continue;
                 }
 
+                activeRuleIds.add(rule.id);
+
                 const oldValue =
-    state[rule.action.device];
+                    state[rule.action.device];
 
-this.evaluator.executeRule(
-    rule,
-    state
-);
+                this.evaluator.executeRule(
+                    rule,
+                    state
+                );
 
-const newValue =
-    state[rule.action.device];
+                const newValue =
+                    state[rule.action.device];
 
-if (oldValue !== newValue) {
-    this.environment.setDeviceState(
-        rule.action.device,
-        newValue
-    );
+                if (oldValue !== newValue) {
+                    this.environment.setDeviceState(
+                        rule.action.device,
+                        newValue
+                    );
 
-    changed = true;
-}
+                    changed = true;
 
-                
+                    logs.push({
+                        type: "RULE",
+                        message: `${rule.id} fired: IF ${rule.condition.variable} ${rule.condition.operator} ${rule.condition.value} THEN ${rule.action.device} = ${rule.action.value}`
+                    });
+                }
             }
         }
 
-        return state;
+        if (activeRuleIds.size > 1) {
+            logs.push({
+                type: "CHAIN",
+                message: `Chained execution across: ${[...activeRuleIds].join(" \u2192 ")}`
+            });
+        }
+
+        if (logs.length === 0) {
+            logs.push({
+                type: "SYSTEM",
+                message: "No rule conditions are currently true."
+            });
+        }
+
+        return {
+            state,
+            cycle: cycleInfo,
+            activeRuleIds: [...activeRuleIds],
+            conflicts: allConflicts,
+            logs
+        };
     }
 
     handleEvent(event) {

@@ -90,6 +90,24 @@ class DependencyGraph {
             console.log(`${rule} → ${dependencies.join(", ")}`);
         }
     }
+
+    // Serializable edge list, e.g. for sending over the wire to a UI
+    // that wants to draw the dependency graph.
+    getEdges() {
+        const edges = [];
+
+        for (const [source, targets] of this.graph) {
+            for (const target of targets) {
+                edges.push({
+                    id: `${source}-${target}`,
+                    source,
+                    target
+                });
+            }
+        }
+
+        return edges;
+    }
 }
 
 module.exports = DependencyGraph;
