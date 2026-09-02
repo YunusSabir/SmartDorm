@@ -8,25 +8,34 @@ const RuleEngine = require("../engine/RuleEngine");
 const eventBus = new EventBus();
 const environment = new Environment(eventBus);
 
-// Demo rules. R1/R2 form a genuine contradiction (both fire whenever
-// temperature > 30, opposite AC values). R3/R4 form a genuine two-hop
-// chain (window -> fan -> blinds). No cycle is pre-loaded: use the
-// "Inject Cycle" button in the UI (or send an "addRule" message) to
-// create one live and watch the backend catch it.
+// Demo rules.
+//   R1        — standalone: temperature alone controls AC. No other rule
+//               touches AC, so there is nothing to fight it.
+//   R2 vs R5  — a genuine, condition-dependent contradiction on `lights`
+//               (Resident A wants them on whenever anyone's home; Building
+//               Policy wants them off when occupancy drops below 2). They
+//               only clash when occupancy == 1 — open the demo there to
+//               show real arbitration, not a rule that's always in conflict.
+//   R3 -> R4  — a genuine two-hop chain: window -> FAN -> BLINDS.
+//   R6        — standalone: time alone controls BLINDS (closes from 6 PM
+//               onward). Shares BLINDS with R4 but always agrees with it
+//               (both say CLOSED), so it never conflicts.
+// No cycle is pre-loaded: use the "Inject Cycle" button in the UI (or send
+// an "addRule" message) to create one live and watch the backend catch it.
 const rules = [
     new Rule(
         "R1",
         "Resident A",
-        { variable: "temperature", operator: ">", value: 30 },
+        { variable: "temperature", operator: ">", value: 37 },
         { device: "AC", value: "ON" },
         5
     ),
     new Rule(
         "R2",
-        "Resident B",
-        { variable: "temperature", operator: ">", value: 28 },
-        { device: "AC", value: "OFF" },
-        7
+        "Resident A",
+        { variable: "occupancy", operator: ">", value: 0 },
+        { device: "lights", value: "ON" },
+        5
     ),
     new Rule(
         "R3",
@@ -44,25 +53,27 @@ const rules = [
     ),
     new Rule(
         "R5",
-        "Resident A",
-        { variable: "occupancy", operator: "==", value: 0 },
+        "Building Policy",
+        { variable: "occupancy", operator: "<", value: 2 },
         { device: "lights", value: "OFF" },
-        6
+        8
+    ),
+    new Rule(
+        "R6",
+        "Building Policy",
+        { variable: "time", operator: ">", value: 17 },
+        { device: "BLINDS", value: "CLOSED" },
+        4
     )
 ];
 
 const engine = new RuleEngine(rules, environment);
 
-// The most recent run() result. Re-sent to every client on every update
-// so the frontend never has to compute rule outcomes itself.
-let lastRunResult = {
-    cycle: { detected: false, path: null },
-    activeRuleIds: [],
-    conflicts: [],
-    logs: [
-        { type: "SYSTEM", message: "SmartDorm rule engine initialized." }
-    ]
-};
+// Run once immediately so the very first payload sent to a client already
+// reflects what the rules actually decide for the default environment,
+// instead of a placeholder that doesn't match reality until something
+// changes.
+let lastRunResult = engine.run(environment.getState());
 
 function serializeRule(rule) {
     return {

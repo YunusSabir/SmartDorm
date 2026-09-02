@@ -74,6 +74,14 @@ class RuleEngine {
         const activeRuleIds = new Set();
         const allConflicts = [];
 
+        // Conflicts are re-detected on every pass of the while(changed) loop
+        // below (a later chain step can surface the same contradiction
+        // again). Without this cache, resolveConflict() would run — and
+        // bump the loser's override count — once per pass instead of once
+        // per real-world decision, artificially inflating the fairness
+        // adjustment for a single event.
+        const resolvedThisRun = new Map();
+
         let changed = true;
 
         while (changed) {
@@ -105,26 +113,35 @@ class RuleEngine {
                     triggeredRules
                 );
 
-            // Resolve each conflict exactly once
+            // Resolve each distinct conflict exactly once per run(), even
+            // if the same pair of rules is still both triggered on a later
+            // pass of this loop.
             const conflictResults = [];
 
             for (const conflict of conflicts) {
-                const result =
-                    this.conflictResolver.resolveConflict(
-                        conflict
-                    );
+                const key =
+                    conflict.device + ":" +
+                    conflict.rules.map(rule => rule.id).sort().join(",");
 
-                conflictResults.push({
-                    conflict,
-                    result
-                });
+                let result = resolvedThisRun.get(key);
 
-                allConflicts.push(result.explanation);
+                if (!result) {
+                    result =
+                        this.conflictResolver.resolveConflict(
+                            conflict
+                        );
 
-                logs.push({
-                    type: "CONFLICT",
-                    message: `Contradiction on ${conflict.device}: ${result.winner.id} beats ${result.loser.id} (${result.explanation.reason}).`
-                });
+                    resolvedThisRun.set(key, result);
+
+                    allConflicts.push(result.explanation);
+
+                    logs.push({
+                        type: "CONFLICT",
+                        message: `Contradiction on ${conflict.device}: ${result.winner.id} beats ${result.loser.id} (${result.explanation.reason}).`
+                    });
+                }
+
+                conflictResults.push({ conflict, result });
             }
 
             // Store the winning rules

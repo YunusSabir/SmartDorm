@@ -32,7 +32,7 @@ const placeholderEnvironment = {
 
 // The 5 rules the backend loads on startup (see backend/server.js).
 // Used only to stop the user from deleting the demo baseline.
-const BUILT_IN_RULE_COUNT = 5;
+const BUILT_IN_RULE_COUNT = 6;
 
 // Device metadata for the "Add Rule" form. This is UI plumbing only
 // (which dropdown to show, what values are valid) - it contains no
